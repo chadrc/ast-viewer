@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<head>
+    <script src="https://unpkg.com/gojs/release/go-debug.js"></script>
+
+    <style>
+        body {
+            display: flex;
+        }
+
+        .left-side {
+            flex-grow: 1;
+            box-sizing: boarder-box;
+            padding: 25px;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .left-side > textarea {
+            width: 100%;
+            height: 200px;
+            box-sizing: border-box;
+            margin-bottom: 10px;
+        }
+
+        .left-side > ul {
+            list-style: none;
+        }
+
+        .left-side > ul > li {
+            display: flex;
+        }
+
+        .right-side {
+            flex-grow: 4
+        }
+    </style>
+</head>
+<body> 
+
+<div class="left-side">
+    <textarea id="treeDef"></textarea>
+    <button onclick="init()">Update Tree</button>
+    <h3>Frames</h3>
+    <ul id="frameList" class="frame-list">
+
+    </ul>
+</div>
+
+<div class="right-side">
+    <div id="myDiagramDiv" style="border: solid 1px black; width:100%; height:1000px"></div>
+</div>
+
+<script>
+function init() {
+      let text = document.getElementById("treeDef").value;
+        
+      let frame_data = text.split("------");
+      let frames = [];
+      
+      let i = 0;
+      for (frame of frame_data) {
+          let data = [{
+            key: "N",
+            text: "None",
+            fill: "#ffffff",
+            stroke: "#333333"
+          }];
+
+          for (line of frame.split("\n")) {
+            let cells = line.split(", ");
+
+            if (cells.length != 7) {
+                continue;
+            }
+
+            let ignore = cells[1].trim() === "NoOp";
+              if (ignore) {
+                  continue;
+              }
+
+            let parent = +cells[4].replace("Some(", "").replace(")", ""); 
+            if (!parent && parent != 0) {
+                parent = "N";
+            }
+
+            let left = +cells[5].replace("Some(", "").replace(")", "");
+            if (!left && left != 0) {
+                left = "-";
+            }
+            let right = +cells[6].replace("Some(", "").replace(")", "") || "-";
+
+            let d = {
+                key: cells[0],
+                text: `${cells[0]} - ${cells[3]} | ${parent} | ${left} | ${right}`,
+                fill: "#ffffff",
+                stroke: "#333333",
+                parent: parent
+            };
+
+            data.push(d);
+          }
+
+          frames.push({
+              index: i,
+              data: data
+          });
+
+          i++;
+      }
+
+      // update frame list
+      let frameList = document.getElementById("frameList");
+      frameList.textContent = "";
+
+      i = 0;
+      for (let frame in frames) {
+          let item = document.createElement("li");
+          item.textContent = i + 1;
+
+          let button = document.createElement("button");
+          button.textContent = "Select";
+          let frame_i = i;
+          button.addEventListener("click", () => selectFrame(frame_i));
+
+          item.appendChild(button);
+          frameList.appendChild(item);
+          
+          i++;
+      }
+
+      window.frames = frames;
+
+      // create the Model with data for the tree, and assign to the Diagram
+      myDiagram.model =
+        $(go.TreeModel,
+          { nodeDataArray: frames[0].data });
+        window.selectedFrame = 0;
+    }
+
+    function selectFrame(i) {
+        window.selectedFrame = i;
+      myDiagram.model =
+        $(go.TreeModel,
+          { nodeDataArray: window.frames[i].data });
+    }
+
+    // Customize the TreeLayout to position all of the leaf nodes at the same vertical Y position.
+    function FlatTreeLayout() {
+      go.TreeLayout.call(this);  // call base constructor
+    }
+    go.Diagram.inherit(FlatTreeLayout, go.TreeLayout);
+
+    // This assumes the TreeLayout.angle is 90 -- growing downward
+    FlatTreeLayout.prototype.commitLayout = function() {
+      go.TreeLayout.prototype.commitLayout.call(this);  // call base method first
+      // find maximum Y position of all Nodes
+      var y = -Infinity;
+      this.network.vertexes.each(function(v) {
+        y = Math.max(y, v.node.position.y);
+      });
+      // move down all leaf nodes to that Y position, but keeping their X position
+      this.network.vertexes.each(function(v) {
+        if (v.destinationEdges.count === 0) {
+          // shift the node down to Y
+          v.node.position = new go.Point(v.node.position.x, y);
+          // extend the last segment vertically
+          v.node.toEndSegmentLength = Math.abs(v.centerY - y);
+        } else {  // restore to normal value
+          v.node.toEndSegmentLength = 10;
+        }
+      });
+  }
+
+  window.frames = [];
+
+    $ = go.GraphObject.make;  // for conciseness in defining templates
+  myDiagram =
+    $(go.Diagram, "myDiagramDiv",
+      {
+        allowCopy: false,
+        allowDelete: false,
+        allowMove: false,
+        initialAutoScale: go.Diagram.Uniform,
+        layout:
+          $(FlatTreeLayout,  // custom Layout, defined below
+            {
+              angle: 90,
+              compaction: go.TreeLayout.CompactionNone
+            }),
+        "undoManager.isEnabled": true
+      });
+
+  myDiagram.nodeTemplate =
+    $(go.Node, "Vertical",
+      { selectionObjectName: "BODY" },
+      $(go.Panel, "Auto", { name: "BODY" },
+        $(go.Shape, "RoundedRectangle",
+          new go.Binding("fill"),
+          new go.Binding("stroke")),
+        $(go.TextBlock,
+          { font: "bold 12pt Arial, sans-serif", margin: new go.Margin(4, 2, 2, 2) },
+          new go.Binding("text"))
+      ),
+      $(go.Panel,  // this is underneath the "BODY"
+        { height: 17 },  // always this height, even if the TreeExpanderButton is not visible
+        $("TreeExpanderButton")
+      )
+    );
+
+  myDiagram.linkTemplate =
+    $(go.Link,
+      $(go.Shape, { strokeWidth: 1.5 }));
+
+  window.myDiagram = myDiagram;
+
+</script>
+</body>
